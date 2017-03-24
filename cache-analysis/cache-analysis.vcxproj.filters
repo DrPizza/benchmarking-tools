@@ -26,7 +26,7 @@
     <ClCompile Include="stdafx.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="scheduler-analysis.cpp">
+    <ClCompile Include="cache-analysis.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
