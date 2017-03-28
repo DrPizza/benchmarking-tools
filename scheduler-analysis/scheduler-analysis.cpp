@@ -3,13 +3,17 @@
 void scheduler_bounce() {
 	using namespace std::chrono_literals;
 
+	constexpr size_t thread_count = 1;
 	std::vector<std::thread> threads;
-	constexpr size_t thread_count = 4;
-	using counters = std::array<size_t, 16>;
-	std::array<counters, thread_count> usage_histograms = {};
+	threads.reserve(thread_count);
+
+	SYSTEM_INFO si = { 0 };
+	::GetSystemInfo(&si);
+
+	std::vector<std::vector<size_t> > usage_histograms{ thread_count, std::vector<size_t> (static_cast<size_t>(si.dwNumberOfProcessors), 0ULL) };
 	std::vector<size_t> thread_hop_counters(thread_count);
 
-	std::vector<size_t> garbage(8UL); // just used to have some writes from the thread that won't be optimized out
+	std::vector<size_t> garbage(thread_count); // just used to have some writes from the thread that won't be optimized out
 	std::atomic<bool> clean_up = false;
 	for(size_t i = 0; i < thread_count; ++i) {
 		threads.push_back(std::thread([&](size_t num) {
@@ -32,7 +36,7 @@ void scheduler_bounce() {
 			::SetThreadAffinityMask(::GetCurrentThread(), mask);
 
 			// bump priority to try to prevent getting displaced on a busy system
-			::SetThreadPriority(::GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
+			//::SetThreadPriority(::GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
 
 			while(!clean_up) {
 				++garbage[num];
@@ -55,7 +59,7 @@ void scheduler_bounce() {
 	for(size_t i = 0; i < thread_count; ++i) {
 		std::cout << "thread " << i << " jumped " << thread_hop_counters[i] << " times. ";
 		size_t total_runs = std::accumulate(std::begin(usage_histograms[i]), std::end(usage_histograms[i]), 0ULL);
-		for(size_t j = 0; j < 16; ++j) {
+		for(size_t j = 0; j < si.dwNumberOfProcessors; ++j) {
 			std::cout << std::fixed << std::setprecision(2) << static_cast<double>(usage_histograms[i][j]) / static_cast<double>(total_runs) << " ";
 		}
 		std::cout << std::endl;
