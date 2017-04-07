@@ -3,7 +3,7 @@
 void scheduler_bounce() {
 	using namespace std::chrono_literals;
 
-	constexpr size_t thread_count = 1;
+	constexpr size_t thread_count = 8;
 	std::vector<std::thread> threads;
 	threads.reserve(thread_count);
 
@@ -81,7 +81,7 @@ int main() {
 	if(cpu[0] >= 0x8000'0004) {
 		union {
 			std::array<char, 48> brand;
-			std::array<std::array<int, 4>, 3> registers;
+			std::array<std::array<__int32, 4>, 3> registers;
 		} data;
 		__cpuid(data.registers[0].data(), 0x8000'0002);
 		__cpuid(data.registers[1].data(), 0x8000'0003);

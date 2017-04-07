@@ -15,7 +15,7 @@
     <ProjectGuid>{8F88A66F-8164-45E5-AE87-37117DC14AE4}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>scheduleranalysis</RootNamespace>
-    <WindowsTargetPlatformVersion>10.0.14393.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0.15063.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
