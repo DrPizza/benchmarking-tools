@@ -13,12 +13,16 @@
 
 #if DOCTOPT_USE_BOOST_REGEX
 #include <boost/regex.hpp>
-namespace std {
+namespace docopt {
 	using boost::regex;
 	using boost::sregex_token_iterator;
 }
 #else
 #include <regex>
+namespace docopt {
+	using std::regex;
+	using std::sregex_token_iterator;
+}
 #endif
 
 #pragma region General utility
@@ -95,11 +99,11 @@ namespace {
 		return ret;
 	}
 
-	std::vector<std::string> regex_split(std::string const& text, std::regex const& re)
+	std::vector<std::string> regex_split(std::string const& text, docopt::regex const& re)
 	{
 		std::vector<std::string> ret;
-		for(auto it = std::sregex_token_iterator(text.begin(), text.end(), re, -1);
-			it != std::sregex_token_iterator();
+		for(auto it = docopt::sregex_token_iterator(text.begin(), text.end(), re, -1);
+			it != docopt::sregex_token_iterator();
 			++it) {
 			ret.emplace_back(*it);
 		}

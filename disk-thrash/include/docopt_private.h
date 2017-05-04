@@ -14,32 +14,66 @@
 #include <vector>
 #include <memory>
 #include <unordered_set>
-#include <assert.h>
+#include <cassert>
+#include <string>
+#include <functional>
+#include <iosfwd>
+#include <variant>
 
 // Workaround GCC 4.8 not having std::regex
 #if DOCTOPT_USE_BOOST_REGEX
 #include <boost/regex.hpp>
-namespace std {
+namespace docopt {
 	using boost::regex;
-   	using boost::sregex_iterator;
-   	using boost::smatch;
-   	using boost::regex_search;
-   	namespace regex_constants {
+	using boost::sregex_iterator;
+	using boost::smatch;
+	using boost::regex_search;
+	namespace regex_constants {
 		using boost::regex_constants::match_not_null;
-   	}
+	}
 }
 #else
 #include <regex>
-#endif
+namespace docopt {
+	using std::regex;
+	using std::sregex_iterator;
+	using std::smatch;
+	using std::regex_search;
+	namespace regex_constants {
+		using std::regex_constants::match_not_null;
+	}
+}
 
-#include "docopt_value.h"
+#endif
 
 #pragma region declarations
 
-namespace docopt {
+namespace std {
+	template<> struct hash<std::vector<std::string> > {
+		typedef std::vector<std::string> argument_type;
+		typedef std::size_t result_type;
 
-	class Pattern;
-	class LeafPattern;
+		result_type operator()(const argument_type& v) const {
+			size_t seed = std::hash<size_t>{}(v.size());
+
+			// stolen from boost::hash_combine
+			std::hash<std::string> hasher;
+			for(auto const& str : v) {
+				seed ^= hasher(str) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+			}
+
+			return seed;
+		}
+	};
+}
+
+namespace docopt {
+	inline bool is_empty(const value& v) {
+		return std::holds_alternative<std::monostate>(v);
+	}
+
+	struct Pattern;
+	struct LeafPattern;
 
 	using PatternList = std::vector<std::shared_ptr<Pattern>>;
 
@@ -74,9 +108,7 @@ namespace docopt {
 	// A hash-set that uniques by hash value
 	using UniquePatternSet = std::unordered_set<std::shared_ptr<Pattern>, PatternHasher, PatternPointerEquality>;
 
-
-	class Pattern {
-	public:
+	struct Pattern {
 		// flatten out children, stopping descent when the given filter returns 'true'
 		virtual std::vector<Pattern*> flat(bool (*filter)(Pattern const*)) = 0;
 
@@ -84,7 +116,11 @@ namespace docopt {
 		virtual void collect_leaves(std::vector<LeafPattern*>&) = 0;
 
 		// flatten out all children into a list of LeafPattern objects
-		std::vector<LeafPattern*> leaves();
+		std::vector<LeafPattern*> leaves() {
+			std::vector<LeafPattern*> ret;
+			collect_leaves(ret);
+			return ret;
+		}
 
 		// Attempt to find something in 'left' that matches this pattern's spec, and if so, move it to 'collected'
 		virtual bool match(PatternList& left, std::vector<std::shared_ptr<LeafPattern>>& collected) const = 0;
@@ -98,9 +134,7 @@ namespace docopt {
 		virtual ~Pattern() = default;
 	};
 
-	class LeafPattern
-		: public Pattern {
-	public:
+	struct LeafPattern : Pattern {
 		LeafPattern(std::string name, value v = {})
 			: fName(std::move(name)),
 			fValue(std::move(v))
@@ -141,9 +175,11 @@ namespace docopt {
 		value fValue;
 	};
 
-	class BranchPattern
-		: public Pattern {
-	public:
+	namespace {
+		std::vector<PatternList> transform(PatternList pattern);
+	}
+
+	struct BranchPattern : Pattern {
 		BranchPattern(PatternList children = {})
 			: fChildren(std::move(children))
 		{}
@@ -219,17 +255,14 @@ namespace docopt {
 		PatternList fChildren;
 	};
 
-	class Argument
-		: public LeafPattern {
-	public:
+	struct Argument : LeafPattern {
 		using LeafPattern::LeafPattern;
 
 	protected:
 		virtual std::pair<size_t, std::shared_ptr<LeafPattern>> single_match(PatternList const& left) const override;
 	};
 
-	class Command : public Argument {
-	public:
+	struct Command : Argument {
 		Command(std::string name, value v = value{ false })
 			: Argument(std::move(name), std::move(v))
 		{}
@@ -238,10 +271,8 @@ namespace docopt {
 		virtual std::pair<size_t, std::shared_ptr<LeafPattern>> single_match(PatternList const& left) const override;
 	};
 
-	class Option final
-		: public LeafPattern
+	struct Option final : LeafPattern
 	{
-	public:
 		static Option parse(std::string const& option_description);
 
 		Option(std::string shortOption,
@@ -289,15 +320,13 @@ namespace docopt {
 		int fArgcount;
 	};
 
-	class Required : public BranchPattern {
-	public:
+	struct Required : BranchPattern {
 		using BranchPattern::BranchPattern;
 
 		bool match(PatternList& left, std::vector<std::shared_ptr<LeafPattern>>& collected) const override;
 	};
 
-	class Optional : public BranchPattern {
-	public:
+	struct Optional : BranchPattern {
 		using BranchPattern::BranchPattern;
 
 		bool match(PatternList& left, std::vector<std::shared_ptr<LeafPattern>>& collected) const override {
@@ -308,19 +337,17 @@ namespace docopt {
 		}
 	};
 
-	class OptionsShortcut : public Optional {
+	struct OptionsShortcut : Optional {
 		using Optional::Optional;
 	};
 
-	class OneOrMore : public BranchPattern {
-	public:
+	struct OneOrMore : BranchPattern {
 		using BranchPattern::BranchPattern;
 
 		bool match(PatternList& left, std::vector<std::shared_ptr<LeafPattern>>& collected) const override;
 	};
 
-	class Either : public BranchPattern {
-	public:
+	struct Either : BranchPattern {
 		using BranchPattern::BranchPattern;
 
 		bool match(PatternList& left, std::vector<std::shared_ptr<LeafPattern>>& collected) const override;
@@ -329,69 +356,64 @@ namespace docopt {
 #pragma endregion
 #pragma region inline implementations
 
-	inline std::vector<LeafPattern*> Pattern::leaves()
-	{
-		std::vector<LeafPattern*> ret;
-		collect_leaves(ret);
-		return ret;
-	}
+	namespace {
+		inline std::vector<PatternList> transform(PatternList pattern)
+		{
+			std::vector<PatternList> result;
 
-	static inline std::vector<PatternList> transform(PatternList pattern)
-	{
-		std::vector<PatternList> result;
+			std::vector<PatternList> groups;
+			groups.emplace_back(std::move(pattern));
 
-		std::vector<PatternList> groups;
-		groups.emplace_back(std::move(pattern));
+			while(!groups.empty()) {
+				// pop off the first element
+				auto children = std::move(groups[0]);
+				groups.erase(groups.begin());
 
-		while(!groups.empty()) {
-			// pop off the first element
-			auto children = std::move(groups[0]);
-			groups.erase(groups.begin());
+				// find the first branch node in the list
+				auto child_iter = std::find_if(children.begin(), children.end(), [](std::shared_ptr<Pattern> const& p) {
+					return dynamic_cast<BranchPattern const*>(p.get());
+				});
 
-			// find the first branch node in the list
-			auto child_iter = std::find_if(children.begin(), children.end(), [](std::shared_ptr<Pattern> const& p) {
-				return dynamic_cast<BranchPattern const*>(p.get());
-			});
+				// no branch nodes left : expansion is complete for this grouping
+				if(child_iter == children.end()) {
+					result.emplace_back(std::move(children));
+					continue;
+				}
 
-			// no branch nodes left : expansion is complete for this grouping
-			if(child_iter == children.end()) {
-				result.emplace_back(std::move(children));
-				continue;
-			}
+				// pop the child from the list
+				auto child = std::move(*child_iter);
+				children.erase(child_iter);
 
-			// pop the child from the list
-			auto child = std::move(*child_iter);
-			children.erase(child_iter);
+				// expand the branch in the appropriate way
+				if(Either* either = dynamic_cast<Either*>(child.get())) {
+					// "[e] + children" for each child 'e' in Either
+					for(auto const& eitherChild : either->children()) {
+						PatternList group = { eitherChild };
+						group.insert(group.end(), children.begin(), children.end());
 
-			// expand the branch in the appropriate way
-			if(Either* either = dynamic_cast<Either*>(child.get())) {
-				// "[e] + children" for each child 'e' in Either
-				for(auto const& eitherChild : either->children()) {
-					PatternList group = { eitherChild };
+						groups.emplace_back(std::move(group));
+					}
+				} else if(OneOrMore* oneOrMore = dynamic_cast<OneOrMore*>(child.get())) {
+					// child.children * 2 + children
+					auto const& subchildren = oneOrMore->children();
+					PatternList group = subchildren;
+					group.insert(group.end(), subchildren.begin(), subchildren.end());
+					group.insert(group.end(), children.begin(), children.end());
+
+					groups.emplace_back(std::move(group));
+				} else { // Required, Optional, OptionsShortcut
+					BranchPattern* branch = dynamic_cast<BranchPattern*>(child.get());
+
+					// child.children + children
+					PatternList group = branch->children();
 					group.insert(group.end(), children.begin(), children.end());
 
 					groups.emplace_back(std::move(group));
 				}
-			} else if(OneOrMore* oneOrMore = dynamic_cast<OneOrMore*>(child.get())) {
-				// child.children * 2 + children
-				auto const& subchildren = oneOrMore->children();
-				PatternList group = subchildren;
-				group.insert(group.end(), subchildren.begin(), subchildren.end());
-				group.insert(group.end(), children.begin(), children.end());
-
-				groups.emplace_back(std::move(group));
-			} else { // Required, Optional, OptionsShortcut
-				BranchPattern* branch = dynamic_cast<BranchPattern*>(child.get());
-
-				// child.children + children
-				PatternList group = branch->children();
-				group.insert(group.end(), children.begin(), children.end());
-
-				groups.emplace_back(std::move(group));
 			}
-		}
 
-		return result;
+			return result;
+		}
 	}
 
 	inline void BranchPattern::fix_repeating_arguments()
@@ -534,13 +556,13 @@ namespace docopt {
 			options_end = option_description.begin() + static_cast<std::ptrdiff_t>(double_space);
 		}
 
-		static const std::regex pattern{ "(-{1,2})?(.*?)([,= ]|$)" };
-		for(std::sregex_iterator i{ option_description.begin(), options_end, pattern, std::regex_constants::match_not_null },
+		static const docopt::regex pattern{ "(-{1,2})?(.*?)([,= ]|$)" };
+		for(docopt::sregex_iterator i{ option_description.begin(), options_end, pattern, docopt::regex_constants::match_not_null },
 			e{};
 			i != e;
 			++i)
 		{
-			std::smatch const& match = *i;
+			docopt::smatch const& match = *i;
 			if(match[1].matched) { // [1] is optional.
 				if(match[1].length() == 1) {
 					shortOption = "-" + match[2].str();
@@ -563,10 +585,10 @@ namespace docopt {
 		}
 
 		if(argcount) {
-			std::smatch match;
-			if(std::regex_search(options_end, option_description.end(),
+			docopt::smatch match;
+			if(docopt::regex_search(options_end, option_description.end(),
 				match,
-				std::regex{ "\\[default: (.*)\\]", std::regex::icase }))
+				docopt::regex{ "\\[default: (.*)\\]", docopt::regex::icase }))
 			{
 				val = match[1].str();
 			}

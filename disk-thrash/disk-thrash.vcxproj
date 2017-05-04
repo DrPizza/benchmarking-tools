@@ -81,7 +81,6 @@
     <ClInclude Include="include\docopt.h" />
     <ClInclude Include="include\docopt_private.h" />
     <ClInclude Include="include\docopt_util.h" />
-    <ClInclude Include="include\docopt_value.h" />
     <ClInclude Include="include\stdafx.h" />
     <ClInclude Include="include\targetver.h" />
   </ItemGroup>

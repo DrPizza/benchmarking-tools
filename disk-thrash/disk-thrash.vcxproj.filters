@@ -30,9 +30,6 @@
     <ClInclude Include="include\docopt_util.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="include\docopt_value.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\disk-thrash.cpp">

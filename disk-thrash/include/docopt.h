@@ -11,11 +11,11 @@
 #ifndef docopt__docopt_h_
 #define docopt__docopt_h_
 
-#include "docopt_value.h"
-
 #include <map>
 #include <vector>
 #include <string>
+#include <variant>
+#include <iosfwd>
 
 #ifdef DOCOPT_HEADER_ONLY
     #define DOCOPT_INLINE inline
@@ -45,17 +45,23 @@
 namespace docopt {
 	
 	// Usage string could not be parsed (ie, the developer did something wrong)
-	struct DocoptLanguageError : std::runtime_error { using runtime_error::runtime_error; };
+	struct language_error : std::runtime_error { using runtime_error::runtime_error; };
 	
 	// Arguments passed by user were incorrect (ie, developer was good, user is wrong)
-	struct DocoptArgumentError : std::runtime_error { using runtime_error::runtime_error; };
+	struct argument_error : std::runtime_error { using runtime_error::runtime_error; };
 	
 	// Arguments contained '--help' and parsing was aborted early
-	struct DocoptExitHelp : std::runtime_error { DocoptExitHelp() : std::runtime_error("Docopt --help argument encountered"){} };
+	struct exit_help : std::runtime_error { exit_help() : std::runtime_error("docopt --help argument encountered"){} };
 
 	// Arguments contained '--version' and parsing was aborted early
-	struct DocoptExitVersion : std::runtime_error { DocoptExitVersion() : std::runtime_error("Docopt --version argument encountered") {} };
+	struct exit_version : std::runtime_error { exit_version() : std::runtime_error("docopt --version argument encountered") {} };
 	
+	/// A generic type to hold the various types that can be produced by docopt.
+	///
+	/// This type can be one of: {bool, unsigned int, string, vector<string>}, or empty.
+
+	using value = std::variant<std::monostate, bool, std::string, unsigned int, std::vector<std::string> >;
+
 	/// Parse user options from the given option string.
 	///
 	/// @param doc   The usage string
@@ -65,30 +71,60 @@ namespace docopt {
 	/// @param options_first  Whether options must precede all args (true), or if args and options
 	///                can be arbitrarily mixed.
 	///
-	/// @throws DocoptLanguageError if the doc usage string had errors itself
-	/// @throws DocoptExitHelp if 'help' is true and the user has passed the '--help' argument
-	/// @throws DocoptExitVersion if 'version' is true and the user has passed the '--version' argument
-	/// @throws DocoptArgumentError if the user's argv did not match the usage patterns
-	std::map<std::string, value> DOCOPT_API docopt_parse(std::string const& doc,
-					    std::vector<std::string> const& argv,
-					    bool help = true,
-					    bool version = true,
-					    bool options_first = false);
+	/// @throws language_error if the doc usage string had errors itself
+	/// @throws exit_help if 'help' is true and the user has passed the '--help' argument
+	/// @throws exit_version if 'version' is true and the user has passed the '--version' argument
+	/// @throws argument_error if the user's argv did not match the usage patterns
+	std::map<std::string, docopt::value> DOCOPT_API docopt_parse(std::string const& doc,
+	                                                             std::vector<std::string> const& argv,
+	                                                             bool help = true,
+	                                                             bool version = true,
+	                                                             bool options_first = false);
 	
 	/// Parse user options from the given string, and exit appropriately
 	///
 	/// Calls 'docopt_parse' and will terminate the program if any of the exceptions above occur:
-	///  * DocoptLanguageError - print error and terminate (with exit code -1)
-	///  * DocoptExitHelp - print usage string and terminate (with exit code 0)
-	///  * DocoptExitVersion - print version and terminate (with exit code 0)
-	///  * DocoptArgumentError - print error and usage string and terminate (with exit code -1)
-	std::map<std::string, value> DOCOPT_API docopt(std::string const& doc,
-					    std::vector<std::string> const& argv,
-					    bool help = true,
-					    std::string const& version = {},
-					    bool options_first = false) noexcept;
+	///  * language_error - print error and terminate (with exit code -1)
+	///  * exit_help - print usage string and terminate (with exit code 0)
+	///  * exit_version - print version and terminate (with exit code 0)
+	///  * argument_error - print error and usage string and terminate (with exit code -1)
+	std::map<std::string, docopt::value> DOCOPT_API docopt(std::string const& doc,
+	                                                       std::vector<std::string> const& argv,
+	                                                       bool help = true,
+	                                                       std::string const& version = {},
+	                                                       bool options_first = false) noexcept;
 }
 
+namespace std {
+	inline std::ostream& operator<<(std::ostream& os, const docopt::value& val) {
+		if(std::holds_alternative<bool>(val)) {
+			bool b = std::get<bool>(val);
+			os << (b ? "true" : "false");
+		} else if(std::holds_alternative<unsigned int>(val)) {
+			unsigned int v = std::get<unsigned int>(val);
+			os << v;
+		} else if(std::holds_alternative<std::string>(val)) {
+			std::string const& str = std::get<std::string>(val);
+			os << '"' << str << '"';
+		} else if(std::holds_alternative<std::vector<std::string> >(val)) {
+			auto const& list = std::get<std::vector<std::string> >(val);
+			os << "[";
+			bool first = true;
+			for(auto const& el : list) {
+				if(first) {
+					first = false;
+				} else {
+					os << ", ";
+				}
+				os << '"' << el << '"';
+			}
+			os << "]";
+		} else {
+			os << "null";
+		}
+		return os;
+	}
+}
 #ifdef DOCOPT_HEADER_ONLY
     #include "docopt.cpp"
 #endif
