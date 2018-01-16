@@ -11,6 +11,8 @@
 #ifndef docopt_docopt_util_h
 #define docopt_docopt_util_h
 
+#include <string>
+
 #if DOCTOPT_USE_BOOST_REGEX
 #include <boost/regex.hpp>
 namespace docopt {
